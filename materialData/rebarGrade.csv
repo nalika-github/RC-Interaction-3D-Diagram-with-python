@@ -1,0 +1,5 @@
+Grade,Yield_Strength_MPa,Tensile_Strength_MPa,Standard,Description
+SD30,295,440,TIS 24-2548,Standard deformed bar - Low strength
+SD40,395,560,TIS 24-2548,Standard deformed bar - Medium strength
+SD50,490,590,TIS 24-2548,Standard deformed bar - High strength
+SR24,235,380,TIS 20-2543,Round smooth bar - Low strength
