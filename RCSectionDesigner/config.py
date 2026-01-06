@@ -4,6 +4,7 @@ Contains path configurations and constants.
 """
 
 import os
+from RCSectionDesigner.units import Q_
 
 # Base directory of the project (root directory)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,6 +19,25 @@ SECTION_COORDINATE_FILE = os.path.join(COORDINATE_DATA_DIR, 'sectionCoordinate.c
 
 # Material data files
 REBAR_GRADE_FILE = os.path.join(MATERIAL_DATA_DIR, 'rebarGrade.csv')
+
+def setRebarGradedata():
+    rebar_grade_data = {}
+    try:
+        with open(REBAR_GRADE_FILE, 'r') as file:
+            lines = file.readlines()
+            for line in lines[1:]:  # Skip header
+                parts = line.strip().split(',')
+                grade = parts[0]
+                fy = float(parts[1])  # Yield strength in MPa 
+                rebar_grade_data[grade] = Q_(fy, 'MPa')
+    except FileNotFoundError:
+        print(f"Warning: Rebar grade file '{REBAR_GRADE_FILE}' not found. Using default grades.")
+        print (rebar_grade_data)
+    return rebar_grade_data
+
+REBAR_GRADE = setRebarGradedata()
+
+REBAR_ELASTIC_MODULUS = Q_(200, 'GPa')  # Default elastic modulus for steel rebars
 
 # Constants (can be adjusted as needed)
 DEFAULT_CONCRETE_STRENGTH = 28  # MPa (f'c)

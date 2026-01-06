@@ -1,27 +1,37 @@
-from matplotlib.patches import Rectangle, Circle
+from matplotlib.patches import Circle, Polygon
 import numpy as np
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
 
-def plot_rc_section(concreteCoordinateArray, rebarCoordinateArray):
+def plot_rc_section(sectionData):
     """
     Plot the reinforced concrete section with concrete and rebar coordinates.
     
     Args:
-        concreteCoordinateArray: Numpy array of concrete section coordinates
-        rebarCoordinateArray: Numpy array of rebar coordinates
+        sectionData: SectionData object containing section_polygon and rebar_coor_data
     """
     fig, ax = plt.subplots(figsize=(10, 8))
     
-    # Plot concrete section
+    # Extract coordinates from sectionData
+    concreteCoordinateArray = np.array(sectionData.section_polygon.exterior.coords)
+    rebarCoordinateArray = sectionData.rebar_coor_data
+    
+    # Plot concrete section as polygon from coordinates
+    concrete_polygon = Polygon(concreteCoordinateArray, 
+                               linewidth=2, 
+                               edgecolor='black', 
+                               facecolor='lightgray', 
+                               alpha=0.5,
+                               closed=True)
+    ax.add_patch(concrete_polygon)
+
+    # Get bounds from actual coordinates
     min_x, min_y = np.min(concreteCoordinateArray, axis=0)
     max_x, max_y = np.max(concreteCoordinateArray, axis=0)
     width = max_x - min_x
     height = max_y - min_y
-    concrete_patch = Rectangle((min_x, min_y), width, height, linewidth=2, edgecolor='black', facecolor='lightgray', alpha=0.5)
-    ax.add_patch(concrete_patch)
     
     # Calculate appropriate rebar radius (based on section size)
     rebar_radius = min(width, height) * 0.02  # 2% of smaller dimension
