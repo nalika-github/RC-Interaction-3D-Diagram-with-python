@@ -30,37 +30,94 @@ def sectionCut(section_data, cut_y):
 def beta1(fc):
     # Check if fc has pint unit
     if hasattr(fc, 'units'):
-        # fc is a pint Quantity, extract magnitude
-        fc_MPa = fc.to('MPa')
+        # fc is a pint Quantity, extract magnitude in MPa
+        fc_MPa_value = fc.to('MPa').magnitude
     else:
-        print("Invalide input: fc does not have units. Please ensure fc is a pint Quantity with MPa unit.")
+        print("Invalid input: fc does not have units. Please ensure fc is a pint Quantity with MPa unit.")
         return None
-        
+    
+    print(f'fc = {fc_MPa_value} MPa')
+    
     # Calculate beta1 according to ACI 318
-    if fc_MPa <= Q_(28, 'MPa'):
+    if fc_MPa_value <= 28:
         return 0.85
-    elif fc_MPa <= Q_(55, 'MPa'):
-        return max(0.85 - 0.05 * (fc_MPa - Q_(28, 'MPa')) / Q_(7, 'MPa'), 0.65)
+    elif fc_MPa_value <= 55:
+        return max(0.85 - 0.05 * (fc_MPa_value - 28) / 7, 0.65)
     else:
         return 0.65
-    pass
-
 
 class StrainCompatibility:
-    def __init__ (self, section_data, cut_y):
-        self.compression_polygon = sectionCut(section_data, cut_y)
-        self.cut_y = cut_y 
+    def __init__ (self, section_data, neutral_axis_y = 0):
+        self.beta1 = beta1(section_data.concrete_material_properties)
+        self.neutral_axis_y = neutral_axis_y
+        self.topconfiber = np.max(section_data.ro_polygon.exterior.xy[1])
+        self.bottomconfiber = np.min(section_data.ro_polygon.exterior.xy[1])
+        self.toprebarfiber = np.max([coord.y for coord in section_data.ro_rebarCoor.geoms])
+        self.bottomrebarfiber = np.min([coord.y for coord in section_data.ro_rebarCoor.geoms])
+        self.cut_y = self.topconfiber - (self.topconfiber - self.neutral_axis_y) * self.beta1
+        self.compression_polygon = sectionCut(section_data, self.cut_y)
         # self.strainline = cal_strainline(cut_y, section_data.concrete_compressive_strain, section_data.length_unit)
-        self.bata1 = None  # Placeholder for strain at extreme compression fiber
         self.concrete_compressive_strain = 0.003  # Typical value for concrete
+        self.compression_force = self.cal_conrete_compresive_force(section_data)
         self.compression_rebar = self.get_compression_rebar(section_data)  # Placeholder for compression rebar data
         self.tension_rebar = self.get_tension_rebar(section_data)  # Placeholder for tension rebar data
+        self.rebar_force = self.cal_rebar_force(section_data)
         self.length_unit = section_data.length_unit
-        self.force_unit = section_data.force_unit
+        # print("Compression Polygon:", self.compression_polygon)
+        # print("compression_rebar",self.compression_rebar)
+
+    def cal_conrete_compresive_force(self, section_data):
+        area_unit = section_data.length_unit**2
+        area = Q_(self.compression_polygon.area, area_unit)
+        fc = section_data.concrete_material_properties
+        return area * fc
+
+    def cal_rebar_force(self, section_data):
+        rebar_force = []
+        slope = self.concrete_compressive_strain / (self.topconfiber - self.neutral_axis_y)
+        Es = section_data.Es # Young's modulus for steel
+
+        for idx, coord in enumerate(section_data.ro_rebarCoor.geoms):
+            # Calculate strain
+            rebar_strain = self.concrete_compressive_strain - (slope * (self.topconfiber - coord.y))
+            
+            # Get material properties
+            rebar_key = 'R' + str(idx)
+            fy = section_data.rebars_material_properties[rebar_key]['fy']
+            a_s = section_data.rebars_material_properties[rebar_key]['as']
+            
+            # Calculate stress (with yield check)
+            if abs(rebar_strain * Es) <= fy:
+                stress = rebar_strain * Es  # Elastic range
+            else:
+                stress = fy if rebar_strain > 0 else -fy  # Yielded
+            
+            # Calculate area and force: F = stress × area
+            force = stress * a_s
+            
+            rebar_force.append(force)
+        return rebar_force
 
     def PM_Point(self):
-        P_n = 0
-        M_n = 0
+        # Calculate total axial force (compression positive)
+        print("Rebar Forces:", self.rebar_force)
+        print("Concrete Compression Force:", self.compression_force)
+        P_n = np.sum(self.rebar_force) + self.compression_force
+        
+        # Calculate moment contribution from concrete compression
+        centroid = self.compression_polygon.centroid
+        concrete_moment_arm = self.topconfiber - centroid.y
+        M_concrete = self.compression_force * concrete_moment_arm
+        
+        # Calculate moment contribution from all rebars
+        M_rebar = 0
+        for original_idx, force in enumerate(self.rebar_force):
+            # Get the y-coordinate of this rebar
+            rebar_y = list(self.compression_rebar.values())[original_idx][1] if original_idx in self.compression_rebar else list(self.tension_rebar.values())[original_idx][1]
+            moment_arm = self.topconfiber - rebar_y
+            M_rebar += force * moment_arm
+        
+        M_n = M_concrete + M_rebar
         return {'P_n': P_n, 'M_n': M_n}
 
     def get_compression_rebar(self, section_data):
@@ -79,12 +136,23 @@ class StrainCompatibility:
 
     def plot(self):
         fig, ax = plt.subplots(figsize=(10, 8))
-        patch_concrete = patch_from_polygon(self.compression_polygon, facecolor='lightblue', edgecolor='black')
+        patch_concrete = patch_from_polygon(self.compression_polygon, facecolor='gray', edgecolor='black')
+        compression_rebar_x = [coord[0] for coord in self.compression_rebar.values()]
+        compression_rebar_y = [coord[1] for coord in self.compression_rebar.values()]
+        tension_rebar_x = [coord[0] for coord in self.tension_rebar.values()]
+        tension_rebar_y = [coord[1] for coord in self.tension_rebar.values()]
+        ax.scatter(compression_rebar_x, compression_rebar_y, color='red', label='Compression Rebar', zorder=5)
+        ax.scatter(tension_rebar_x, tension_rebar_y, color='blue', label='Tension Rebar', zorder=5)
         ax.add_patch(patch_concrete)
 
         # Get bounds from actual coordinates
-        min_x, min_y = np.min(self.compression_polygon.exterior.coords, axis=0)
-        max_x, max_y = np.max(self.compression_polygon.exterior.coords, axis=0)
+        # Collect all coordinates from polygon and rebars
+        all_coords = list(self.compression_polygon.exterior.coords)
+        all_coords.extend(self.compression_rebar.values())
+        all_coords.extend(self.tension_rebar.values())
+        
+        min_x, min_y = np.min(all_coords, axis=0)
+        max_x, max_y = np.max(all_coords, axis=0)
         width = max_x - min_x
         height = max_y - min_y
 

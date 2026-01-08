@@ -19,6 +19,7 @@ SECTION_COORDINATE_FILE = os.path.join(COORDINATE_DATA_DIR, 'sectionCoordinate.c
 
 # Material data files
 REBAR_GRADE_FILE = os.path.join(MATERIAL_DATA_DIR, 'rebarGrade.csv')
+REBAR_SECTION_PROPERTY_FILE = os.path.join(MATERIAL_DATA_DIR, 'rebarSectionProperty.csv')
 
 def setRebarGradedata():
     rebar_grade_data = {}

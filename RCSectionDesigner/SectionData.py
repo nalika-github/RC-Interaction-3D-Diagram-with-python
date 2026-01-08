@@ -75,12 +75,16 @@ class SectionData:
         rebar_df = rebar_df.dropna()
         section_df = section_df.dropna()
         self.sectionRebarGrade = rebar_df['Grade']
+        self.sectionRebarDiameter = rebar_df['Diameter']
+        self.sectionRebarSize = rebar_df['Size']
         self.rebarCoor = MultiPoint(rebar_df[['X', 'Y']].to_numpy())
-        self.ro_rebarCoor = MultiPoint(section_df[['X', 'Y']].to_numpy())
+        self.ro_rebarCoor = MultiPoint(rebar_df[['X', 'Y']].to_numpy())
         self.polygon = Polygon(section_df[['X', 'Y']].to_numpy())
         self.ro_polygon = Polygon(section_df[['X', 'Y']].to_numpy())
-        self.concrete_material_properties = con_matprop * self.force_unit/(self.length_unit**2)
-        self.rebars_material_properties = self.SetRebarMaterialProperties(grade_mapping_filepath, self.sectionRebarGrade)
+        # con_matprop is already in MPa, so we need to convert it properly
+        self.concrete_material_properties = Q_(con_matprop, 'MPa')
+        self.rebars_material_properties = self.SetRebarMaterialProperties(self.sectionRebarGrade)
+        self.Es = Q_(200000, 'MPa')  # Young's modulus for steel
 
 
     def set_units(self, length_unit="mm", force_unit="kN"):
@@ -116,8 +120,9 @@ class SectionData:
         print("\nConcrete Material Properties:", self.concrete_material_properties)
         print("Rebar Material Properties:", self.rebars_material_properties)
 
-    def SetRebarMaterialProperties(self, grade_mapping_filepath, sectionRebarGrade):
-        rebarGrade_df = pd.read_csv(grade_mapping_filepath).dropna()
+    def SetRebarMaterialProperties(self, sectionRebarGrade):
+        rebarGrade_df = pd.read_csv(config.REBAR_GRADE_FILE).dropna()
+        rebarSize_df = pd.read_csv(config.REBAR_SECTION_PROPERTY_FILE).dropna()
         rebar_matprop = {}
 
         for i, grade in sectionRebarGrade.items():
@@ -127,6 +132,12 @@ class SectionData:
             fu = Q_(fu[0], 'MPa')
             rebar_matprop['R' + str(i)] = {'fy': fy, 'fu': fu}
 
+        for i, size in self.sectionRebarSize.items():
+            area_mm2 = rebarSize_df.loc[rebarSize_df['Size'] == size, 'Area(mm2.)'].values
+            area_mm2 = Q_(area_mm2[0], 'mm^2')
+            rebar_matprop['R' + str(i)]['Area'] = area_mm2
+
+        print("Rebar Material Properties:", rebar_matprop)
         return rebar_matprop
 
         # for index, row in rebarGrade_df.iterrows():

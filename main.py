@@ -2,8 +2,11 @@ import RCSectionDesigner as RCSD
 
 def main():
     sectionData = RCSD.SectionData(con_matprop = 30) # concrete strength in MPa 
-    strainCompatibility_1 = RCSD.StrainCompatibility(sectionData, cut_y=100)  # cut_y in SI units (meters)
-    strainCompatibility_1.plot()
+    sectionData.rotate_section(angle_degrees = 20)
+    # sectionData.plot(is_rotated=False)
+    # strainCompatibility_1 = RCSD.StrainCompatibility(sectionData, neutral_axis_y=0)  # neutral_axis_y
+    # strainCompatibility_1.plot()
+    # print(strainCompatibility_1.PM_Point())
     # interactionDiagram = RCSD.interactionDiagram(sectionData)
     # interactionDiagram.plot()
     # build_rotated_section(polyline, angle_degrees, section_name=None, origin='center')
@@ -21,4 +24,6 @@ def main():
 if __name__ == "__main__":
     main()
 
-# เดี๋ยวต้องใช้ Plotly ทำ 3D Visualization ต่อ
+# Self Note:
+# เดี๋ยวต้องใช้ ทำ rebar cross section property และไป edit sectiondata.py ด้วย เพื่อให้ดึงขนาดเหล็กได้
+# แล้วก็ต้องไป edit straincompatibility.py เพื่อคำนวณแรง rebar ให้ถูกต้อง
