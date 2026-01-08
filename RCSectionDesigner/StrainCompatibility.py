@@ -48,6 +48,7 @@ def beta1(fc):
 
 class StrainCompatibility:
     def __init__ (self, section_data, neutral_axis_y = 0):
+        self.section_data = section_data
         self.beta1 = beta1(section_data.concrete_material_properties)
         self.neutral_axis_y = neutral_axis_y
         self.topconfiber = np.max(section_data.ro_polygon.exterior.xy[1])
@@ -70,7 +71,9 @@ class StrainCompatibility:
         area_unit = section_data.length_unit**2
         area = Q_(self.compression_polygon.area, area_unit)
         fc = section_data.concrete_material_properties
-        return area * fc
+        Pn = area * fc
+        Pn = Pn.to('kN')  # Convert force to kN
+        return Pn
 
     def cal_rebar_force(self, section_data):
         rebar_force = []
@@ -84,7 +87,7 @@ class StrainCompatibility:
             # Get material properties
             rebar_key = 'R' + str(idx)
             fy = section_data.rebars_material_properties[rebar_key]['fy']
-            a_s = section_data.rebars_material_properties[rebar_key]['as']
+            rebar_area = section_data.rebars_material_properties[rebar_key]['Area']
             
             # Calculate stress (with yield check)
             if abs(rebar_strain * Es) <= fy:
@@ -93,32 +96,50 @@ class StrainCompatibility:
                 stress = fy if rebar_strain > 0 else -fy  # Yielded
             
             # Calculate area and force: F = stress × area
-            force = stress * a_s
+            force = stress * rebar_area
+            force = force.to('kN')  # Convert force to kN
             
             rebar_force.append(force)
+        print ("rebar force: \n", rebar_force)
         return rebar_force
 
     def PM_Point(self):
         # Calculate total axial force (compression positive)
         print("Rebar Forces:", self.rebar_force)
         print("Concrete Compression Force:", self.compression_force)
-        P_n = np.sum(self.rebar_force) + self.compression_force
+        P_n = 0
+        for force in self.rebar_force:
+            P_n += force
+        P_n += self.compression_force
+        print("Total Axial Force P_n:", P_n)
         
         # Calculate moment contribution from concrete compression
         centroid = self.compression_polygon.centroid
-        concrete_moment_arm = self.topconfiber - centroid.y
+        concrete_moment_arm = Q_(self.topconfiber - centroid.y, self.length_unit)
         M_concrete = self.compression_force * concrete_moment_arm
+        print("Concrete Moment M_concrete:", M_concrete)
         
         # Calculate moment contribution from all rebars
         M_rebar = 0
-        for original_idx, force in enumerate(self.rebar_force):
-            # Get the y-coordinate of this rebar
-            rebar_y = list(self.compression_rebar.values())[original_idx][1] if original_idx in self.compression_rebar else list(self.tension_rebar.values())[original_idx][1]
-            moment_arm = self.topconfiber - rebar_y
-            M_rebar += force * moment_arm
-        
+        for index, force in enumerate(self.rebar_force):
+            coord = self.section_data.ro_rebarCoor.geoms[index]
+            rebar_moment_arm = Q_(self.topconfiber - coord.y, self.length_unit)
+            M_rebar += force * rebar_moment_arm
+
         M_n = M_concrete + M_rebar
+        M_n = M_n.to('kN*m')  # Convert moment to kN*m
+        print("Total Moment M_n:", M_n)
         return {'P_n': P_n, 'M_n': M_n}
+
+    def plot_PMM(self):
+        PMM = self.PM_Point()
+        fig, ax = plt.subplots()
+        ax.plot(PMM['M_n'].magnitude, PMM['P_n'].magnitude, 'bo')
+        ax.set_xlabel(f'Moment (kN·m)')
+        ax.set_ylabel(f'Axial Force (kN)')
+        ax.set_title('P-M Interaction Point')
+        plt.grid()
+        plt.show()
 
     def get_compression_rebar(self, section_data):
         compression_rebar = {}

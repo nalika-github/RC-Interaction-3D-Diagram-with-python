@@ -117,8 +117,7 @@ class SectionData:
             coord = point.coords[0]  # Each Point has one coordinate
             print(f"Tage: R{str(index)} X: {coord[0]}, Y: {coord[1]}")
         
-        print("\nConcrete Material Properties:", self.concrete_material_properties)
-        print("Rebar Material Properties:", self.rebars_material_properties)
+        print(f"\nConcrete Material Properties:", self.concrete_material_properties)
 
     def SetRebarMaterialProperties(self, sectionRebarGrade):
         rebarGrade_df = pd.read_csv(config.REBAR_GRADE_FILE).dropna()
@@ -137,7 +136,6 @@ class SectionData:
             area_mm2 = Q_(area_mm2[0], 'mm^2')
             rebar_matprop['R' + str(i)]['Area'] = area_mm2
 
-        print("Rebar Material Properties:", rebar_matprop)
         return rebar_matprop
 
         # for index, row in rebarGrade_df.iterrows():
