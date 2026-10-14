@@ -2,17 +2,19 @@ import RCSectionDesigner as RCSD
 
 def main():
     sectionData = RCSD.SectionData(con_matprop = 30) # concrete strength in MPa 
-    sectionData.rotate_section(angle_degrees = 20)
-    # sectionData.plot(is_rotated=False)
-    strainCompatibility_1 = RCSD.StrainCompatibility(sectionData, neutral_axis_y=0)  # neutral_axis_y
-    print("Rebar Forces at Neutral Axis y=0:")
-    print(strainCompatibility_1.rebar_force)
-    print("Total Axial Force and Moment:")
-    print(strainCompatibility_1.PM_Point())
-    strainCompatibility_1.plot_PMM()
-    # print("Compression Rebar Coordinates:", strainCompatibility_1.compression_rebar)
-    # strainCompatibility_1.plot()
+    sectionData.rotate_section(angle_degrees = 0)
+    sectionData.plot(is_rotated=False)
+    # strainCompatibility_1 = RCSD.StrainCompatibility(sectionData, neutral_axis_y=0)  # neutral_axis_y
+    # print("Rebar Forces at Neutral Axis y=0:")
+    # print(strainCompatibility_1.rebar_force)
+    # print("Total Axial Force and Moment:")
     # print(strainCompatibility_1.PM_Point())
+    diagram = RCSD.InteractionDiagram(sectionData)
+    diagram.cal_2d_interaction_diagram(
+        angle=0,
+        n_points=100,
+    )
+    diagram.plot_2d()
     # interactionDiagram = RCSD.interactionDiagram(sectionData)
     # interactionDiagram.plot()
     # build_rotated_section(polyline, angle_degrees, section_name=None, origin='center')

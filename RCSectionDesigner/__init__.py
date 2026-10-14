@@ -9,6 +9,7 @@ from .inputNOutputUnitSetting import *
 from .plotRCSection import *
 from .StrainCompatibility import *
 from .config import *
+from .InteractionDiagram import *
 
 __all__ = ['SectionData', 
            'material', 
@@ -17,4 +18,5 @@ __all__ = ['SectionData',
            'ureg', 'Q_', 
            'build_rotated_section',
            'get_coordinates_rotated',
-           'config']
+           'config',
+           'interactionDiagram']

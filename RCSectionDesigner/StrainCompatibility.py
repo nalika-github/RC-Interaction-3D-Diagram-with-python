@@ -1,5 +1,6 @@
 from shapely.geometry import Polygon, LineString, MultiPolygon
 from shapely.affinity import translate
+from shapely.lib import area
 from shapely.plotting import patch_from_polygon
 import matplotlib.pyplot as plt
 import numpy as np
@@ -71,9 +72,8 @@ class StrainCompatibility:
         area_unit = section_data.length_unit**2
         area = Q_(self.compression_polygon.area, area_unit)
         fc = section_data.concrete_material_properties
-        Pn = area * fc
-        Pn = Pn.to('kN')  # Convert force to kN
-        return Pn
+
+        return (0.85 * fc * area).to("kN")
 
     def cal_rebar_force(self, section_data):
         rebar_force = []
@@ -88,7 +88,7 @@ class StrainCompatibility:
             rebar_key = 'R' + str(idx)
             fy = section_data.rebars_material_properties[rebar_key]['fy']
             rebar_area = section_data.rebars_material_properties[rebar_key]['Area']
-            
+
             # Calculate stress (with yield check)
             if abs(rebar_strain * Es) <= fy:
                 stress = rebar_strain * Es  # Elastic range
@@ -97,39 +97,46 @@ class StrainCompatibility:
             
             # Calculate area and force: F = stress × area
             force = stress * rebar_area
-            force = force.to('kN')  # Convert force to kN
-            
-            rebar_force.append(force)
-        print ("rebar force: \n", rebar_force)
+
+            # หักแรงคอนกรีตที่นับซ้ำ หากศูนย์กลางเหล็กอยู่ใน stress block
+            if self.compression_polygon.covers(coord):
+                fc = section_data.concrete_material_properties
+                force -= 0.85 * fc * rebar_area
+
+            rebar_force.append(force.to("kN"))
+        print ("rebar force minus concrete contribution not the real rebar force: \n", rebar_force)
         return rebar_force
 
     def PM_Point(self):
-        # Calculate total axial force (compression positive)
-        print("Rebar Forces:", self.rebar_force)
-        print("Concrete Compression Force:", self.compression_force)
-        P_n = 0
+        # รวมแรงแกน: แรงอัดเป็นบวก
+        P_n = Q_(0, "kN")
         for force in self.rebar_force:
             P_n += force
         P_n += self.compression_force
-        print("Total Axial Force P_n:", P_n)
-        
-        # Calculate moment contribution from concrete compression
-        centroid = self.compression_polygon.centroid
-        concrete_moment_arm = Q_(self.topconfiber - centroid.y, self.length_unit)
-        M_concrete = self.compression_force * concrete_moment_arm
-        print("Concrete Moment M_concrete:", M_concrete)
-        
-        # Calculate moment contribution from all rebars
-        M_rebar = 0
+
+        # จุดอ้างอิงโมเมนต์: centroid ของหน้าตัดเต็ม
+        y_ref = self.section_data.ro_polygon.centroid.y
+
+        # โมเมนต์จากคอนกรีต
+        M_concrete = Q_(0, "kN*m")
+
+        if self.compression_polygon.area > 0:
+            centroid = self.compression_polygon.centroid
+            concrete_moment_arm = Q_(centroid.y - y_ref, self.length_unit)
+            M_concrete = (self.compression_force * concrete_moment_arm).to("kN*m")
+
+        # โมเมนต์จากแรงเหล็กสุทธิ หลังหักคอนกรีตที่นับซ้ำ
+        M_rebar = Q_(0, "kN*m")
+
         for index, force in enumerate(self.rebar_force):
             coord = self.section_data.ro_rebarCoor.geoms[index]
-            rebar_moment_arm = Q_(self.topconfiber - coord.y, self.length_unit)
+            rebar_moment_arm = Q_(coord.y - y_ref, self.length_unit)
             M_rebar += force * rebar_moment_arm
-
-        M_n = M_concrete + M_rebar
-        M_n = M_n.to('kN*m')  # Convert moment to kN*m
+        M_n = (M_concrete + M_rebar).to("kN*m")
+        print("Total Axial Force P_n:", P_n)
+        print("Concrete Moment M_concrete:", M_concrete)
         print("Total Moment M_n:", M_n)
-        return {'P_n': P_n, 'M_n': M_n}
+        return { "P_n": P_n.to("kN"), "M_n": M_n,}
 
     def plot_PMM(self):
         PMM = self.PM_Point()
@@ -142,18 +149,18 @@ class StrainCompatibility:
         plt.show()
 
     def get_compression_rebar(self, section_data):
-        compression_rebar = {}
-        for idx, coord in enumerate(section_data.ro_rebarCoor.geoms):
-            if coord.y > self.cut_y:
-                compression_rebar[idx] = (coord.x, coord.y)
-        return compression_rebar
-    
+        return {
+            idx: (coord.x, coord.y)
+            for idx, coord in enumerate(section_data.ro_rebarCoor.geoms)
+            if coord.y > self.neutral_axis_y
+        }
+
     def get_tension_rebar(self, section_data):
-        tension_rebar = {}
-        for idx, coord in enumerate(section_data.ro_rebarCoor.geoms):
-            if coord.y < self.cut_y:
-                tension_rebar[idx] = (coord.x, coord.y)
-        return tension_rebar
+        return {
+            idx: (coord.x, coord.y)
+            for idx, coord in enumerate(section_data.ro_rebarCoor.geoms)
+            if coord.y < self.neutral_axis_y
+        }
 
     def plot(self):
         fig, ax = plt.subplots(figsize=(10, 8))
